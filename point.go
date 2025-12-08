@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"time"
 
-	pb "github.com/openzee/point-flow/proto"
+	pb "github.com/openzee/point-cache/proto"
 	xlsx "github.com/openzee/xlsx-loader"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"

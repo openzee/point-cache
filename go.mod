@@ -1,4 +1,4 @@
-module github.com/openzee/point-flow
+module github.com/openzee/point-cache
 
 go 1.24.0
 

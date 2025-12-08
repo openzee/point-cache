@@ -9,7 +9,7 @@ import (
 )
 
 func LoadExcel() []*xlsx.Point {
-	rst, _ := xlsx.ParseExcel("test/test.xlsx")
+	rst, _ := xlsx.ParseExcel("test/test_online.xlsx")
 	return rst
 }
 
