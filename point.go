@@ -2,7 +2,6 @@ package flow
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	pb "github.com/openzee/point-cache/proto"
@@ -17,10 +16,6 @@ type Point struct {
 	Value           interface{} //数据值
 	ChangeTimestamp time.Time   //数据的变化时间
 	pbPoint         *pb.Point   //协议点位
-}
-
-func (obj *Point) PointPrimaryKey() string {
-	return strconv.FormatUint(obj.Original.PointPrimaryKey, 10)
 }
 
 func (obj *Point) String() string {
