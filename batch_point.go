@@ -21,7 +21,7 @@ func (batch BatchPoint) PushRedis(redisClient *redis.Client) error {
 			logrus.Errorf("%v Marshal fails. err:%v", pt, err) //部分失败，并不进行处理
 			continue
 		}
-		pipe.RPush(ctx, pt.PointPrimaryKey(), b)
+		pipe.RPush(ctx, pt.Original.GetPointPrimaryKey(), b)
 	}
 
 	cmds, err := pipe.Exec(ctx)
