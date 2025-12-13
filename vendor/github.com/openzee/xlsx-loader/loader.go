@@ -12,7 +12,7 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
-type Point struct {
+type DiscretePointMetadata struct {
 	Seq          string   `excel:"序号"`
 	BusinessUnit string   `excel:"事业部"`
 	Line         string   `excel:"产线"`
@@ -33,7 +33,7 @@ type Point struct {
 	DeviceSubCode   string        `excel:"设备附属编号"`
 	PointPrimaryKey uint64        `excel:"点位编号"`
 	PointExtraCode  string        `excel:"点位额外编号"`
-	GroupID         string        `excel:"分组编号"`
+	GroupID         uint32        `excel:"分组编号"`
 	NeedStore       string        `excel:"是否存储"`
 	//NeedPublish    string        `excel:"是否推送"`
 	//CalcType       string        `excel:"计算类型"`
@@ -43,38 +43,70 @@ type Point struct {
 	RowNumber int    `excel:"-"`
 }
 
-func (obj *Point) GetPointPrimaryKey() string {
+func (obj *DiscretePointMetadata) GetPointPrimaryKey() string {
 	return strconv.FormatUint(obj.PointPrimaryKey, 10)
 }
 
-func (obj *Point) String() string {
-	return fmt.Sprintf("SheetName:%v RowNumber:%v 点位编号:%v 数据源地址:%v 类型:%v IO地址:%v", 
+func (obj *DiscretePointMetadata) String() string {
+	return fmt.Sprintf("SheetName:%v RowNumber:%v 点位编号:%v 数据源地址:%v 类型:%v IO地址:%v 组ID:%v",
 		obj.SheetName,
 		obj.RowNumber,
 		obj.GetPointPrimaryKey(),
 		obj.DataSourceAddr,
 		obj.Type,
 		obj.IOAddr,
+		obj.GroupID,
 	)
 }
 
-// 将相同地址和频率的点位重新组装
-func ReassembleWithAddrAndFreq(pt []*Point) map[string]map[time.Duration][]*Point {
+// 将相同组的点位重新组装
+func ReassembleWithGroupIDAndFreq(pt []*DiscretePointMetadata) map[uint32]map[time.Duration][]*DiscretePointMetadata {
 
-	mapWithDataAddr := make(map[string]map[time.Duration][]*Point)
 	count := 0
+	mapWithGrp := make(map[uint32]map[time.Duration][]*DiscretePointMetadata)
+
+	for _, p := range pt {
+		mapWithFreq, ok := mapWithGrp[p.GroupID]
+		if !ok {
+			mapWithFreq = make(map[time.Duration][]*DiscretePointMetadata)
+			mapWithGrp[p.GroupID] = mapWithFreq
+		}
+
+		pts, ok := mapWithFreq[p.Frequency]
+		if !ok {
+			pts = make([]*DiscretePointMetadata, 0)
+			mapWithFreq[p.Frequency] = pts
+		}
+
+		pts = append(pts, p)
+		count = count + 1
+		mapWithFreq[p.Frequency] = pts
+	}
+
+	if count != len(pt) {
+		log.Fatalf("点位重组后，长度缺失")
+	}
+
+	return mapWithGrp
+}
+
+// 将相同地址和频率的点位重新组装
+func ReassembleWithAddrAndFreq(pt []*DiscretePointMetadata) map[string]map[time.Duration][]*DiscretePointMetadata {
+
+	count := 0
+	mapWithDataAddr := make(map[string]map[time.Duration][]*DiscretePointMetadata)
 
 	for _, p := range pt {
 
 		mapWithFreq, ok := mapWithDataAddr[p.DataSourceAddr]
 		if !ok {
-			mapWithFreq = make(map[time.Duration][]*Point)
+			mapWithFreq = make(map[time.Duration][]*DiscretePointMetadata)
 			mapWithDataAddr[p.DataSourceAddr] = mapWithFreq
 		}
 
 		pts, ok := mapWithFreq[p.Frequency]
 		if !ok {
-			pts = make([]*Point, 0)
+			pts = make([]*DiscretePointMetadata, 0)
 			mapWithFreq[p.Frequency] = pts
 		}
 
@@ -90,13 +122,13 @@ func ReassembleWithAddrAndFreq(pt []*Point) map[string]map[time.Duration][]*Poin
 	return mapWithDataAddr
 }
 
-func ParseExcel(fname string, onlySheets ...string) ([]*Point, error) {
+func ParseExcel(fname string, onlySheets ...string) ([]*DiscretePointMetadata, error) {
 	f, err := excelize.OpenFile(fname)
 	if err != nil {
 		return nil, fmt.Errorf("open file %v fails, err:%v", fname, err)
 	}
 
-	allPoints := []*Point{}
+	allPoints := []*DiscretePointMetadata{}
 
 	sheetList := f.GetSheetList()
 
@@ -143,7 +175,7 @@ func ParseExcel(fname string, onlySheets ...string) ([]*Point, error) {
 				continue
 			}
 
-			var p Point
+			var p DiscretePointMetadata
 			p.SheetName = sheetName
 			p.RowNumber = rowIdx + 2
 
@@ -162,7 +194,7 @@ func ParseExcel(fname string, onlySheets ...string) ([]*Point, error) {
 
 				idx, ok := colIndex[colName]
 				if !ok || idx >= len(row) {
-					log.Warningf("sheetName:[%v] row:[%v] colName:[%v] idx:[%v] 未找到[%v]或超过row范围%v", sheetName, rowIdx+1, colName, idx, !ok, row )         
+					log.Warningf("sheetName:[%v] row:[%v] colName:[%v] idx:[%v] 未找到[%v]或超过row范围%v", sheetName, rowIdx+1, colName, idx, !ok, row)
 					continue
 				}
 
@@ -175,6 +207,17 @@ func ParseExcel(fname string, onlySheets ...string) ([]*Point, error) {
 						continue
 					}
 					v.Field(i).Set(reflect.ValueOf(ParseDataType(cellValue)))
+				case "GroupID":
+					if cellValue == "" {
+						continue
+					}
+
+					if val, err := strconv.ParseUint(cellValue, 10, 64); err != nil {
+						errorMsgs = append(errorMsgs, fmt.Sprintf("点位编号非法: %v", err))
+					} else {
+						v.Field(i).SetUint(val)
+					}
+
 				case "PointPrimaryKey":
 					if cellValue == "" {
 						errorMsgs = append(errorMsgs, "点位编号为空")
@@ -193,7 +236,7 @@ func ParseExcel(fname string, onlySheets ...string) ([]*Point, error) {
 					}
 					parseStr := cellValue
 					// 关键：没单位自动补 ms！
-					if !strings.ContainsAny(parseStr, "nsuµmh") && 
+					if !strings.ContainsAny(parseStr, "nsuµmh") &&
 						!strings.HasSuffix(strings.ToLower(parseStr), "ms") &&
 						!strings.HasSuffix(strings.ToLower(parseStr), "s") {
 						parseStr += "ms"
